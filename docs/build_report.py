@@ -30,6 +30,7 @@ INTEGRANTES = ["Ezequiel Diaz Fernandez"]
 MATERIA = "Trabajo Práctico Final"
 INSTITUCION = "Universidad CAECE"
 REPO = "https://github.com/fcaceres-create/caece_ezequiel"
+APP_URL = "https://caece-aprendizaje-artificial-ezequiel.onrender.com"
 
 # ---------- tipografía y estilos ----------
 FONT_DIR = Path(matplotlib.__file__).parent / "mpl-data" / "fonts" / "ttf"
@@ -138,6 +139,7 @@ def cover():
     s.append(t)
     s.append(Spacer(1, 4.5 * cm))
     meta = [["Autor" if len(INTEGRANTES) == 1 else "Integrantes", "<br/>".join(INTEGRANTES)], ["Modelo final", M["chosen_name"]],
+            ["Aplicación", f'<link href="{APP_URL}" color="#2a78d6">{APP_URL}</link>'],
             ["Repositorio", f'<link href="{REPO}" color="#2a78d6">{REPO}</link>'],
             ["Fecha", date.today().strftime("%d/%m/%Y")]]
     t = Table([[P(a, "head"), P(b, "cell")] for a, b in meta], colWidths=[3.2 * cm, 13 * cm])
@@ -363,7 +365,8 @@ def build():
     # ---------------- 8. Aplicación ----------------
     s += [P("8. Aplicación web", "h1"),
           fig("arquitectura.png", 16.4, "Figura 8. Arquitectura de la solución."),
-          P("El pipeline completo (preprocesamiento, modelo y umbral) se serializa con <i>joblib</i> y lo carga una aplicación <b>Flask</b> que ofrece:"),
+          P("El pipeline completo (preprocesamiento, modelo y umbral) se serializa con <i>joblib</i> y lo carga una aplicación <b>Flask</b>, publicada en "
+            f'<link href="{APP_URL}" color="#2a78d6">{APP_URL}</link> (Render, servidor gunicorn). Ofrece:'),
           *bullets([
               "<b>Resultados</b>: indicadores clave, comparación de modelos, robustez, matriz de confusión, umbral e importancia de variables.",
               "<b>Proceso</b>: recorrido CRISP-DM con los gráficos exploratorios interactivos y las decisiones tomadas.",

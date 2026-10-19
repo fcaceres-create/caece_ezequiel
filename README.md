@@ -6,6 +6,7 @@ Modelo que estima si una transacción es fraudulenta, con su análisis completo 
 
 | | |
 |---|---|
+| **Aplicación online** | [caece-aprendizaje-artificial-ezequiel.onrender.com](https://caece-aprendizaje-artificial-ezequiel.onrender.com) (plan gratuito: la primera carga puede demorar ~50 s) |
 | **Modelo final** | Gradient Boosting (`HistGradientBoostingClassifier`) |
 | **Prueba (últimos 8 días, nunca vistos)** | 2.165 de 2.168 fraudes detectados · 0 falsos positivos · PR-AUC 1,000 |
 | **Variables** | 14, todas conocidas *antes* de autorizar la operación |

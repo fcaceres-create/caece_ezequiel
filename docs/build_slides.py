@@ -15,6 +15,7 @@ OUT = DOCS / "presentacion.html"
 M = json.loads((ROOT / "models" / "metrics.json").read_text(encoding="utf-8"))
 REPO = "https://github.com/fcaceres-create/caece_ezequiel"
 AUTOR = "Ezequiel Diaz Fernandez"
+APP_URL = "https://caece-aprendizaje-artificial-ezequiel.onrender.com"
 
 
 def num(x, d=0):
@@ -205,7 +206,7 @@ def build():
             <img src="{img('app_resultados.png')}" alt="Dashboard de resultados">
             <img src="{img('app_simulador.png')}" alt="Simulador">
           </div>
-          <p class="note"><code>POST /api/predict</code> · dashboard de resultados · explicación del proceso · simulador con ejemplos reales</p>
+          <p class="note"><a href="{APP_URL}" target="_blank">{APP_URL.replace("https://", "")}</a> · <code>POST /api/predict</code> · dashboard de resultados · explicación del proceso · simulador con ejemplos reales</p>
         </section>""",
         # 14 Conclusiones
         f"""<section>
@@ -222,6 +223,7 @@ def build():
         f"""<section class="cover end">
           <h1>¿Preguntas?</h1>
           <p class="lead">{AUTOR} · Código, modelo, aplicación e informe</p>
+          <p class="repo"><a href="{APP_URL}" target="_blank">{APP_URL}</a></p>
           <p class="repo">{REPO}</p>
         </section>""",
     ]
@@ -261,7 +263,7 @@ ul.big{padding-left:22px;margin:4px 0}ul.big li{font-size:21px;margin-bottom:12p
 .kpis{display:flex;gap:56px;margin-top:46px;border-top:3px solid var(--orange);padding-top:20px}
 .kpis div{display:flex;flex-direction:column}.kpis b{font-size:42px;letter-spacing:-.02em}.kpis span{font-size:15px;color:var(--muted)}
 .author{font-size:20px;font-weight:600;color:var(--ink);margin:4px 0 0}
-.end{align-items:flex-start}.repo{font-family:Consolas,monospace;font-size:22px;color:var(--blue)}
+.end{align-items:flex-start}.repo a,.note a{color:var(--blue)}.end .repo{margin:4px 0}.repo{font-family:Consolas,monospace;font-size:22px;color:var(--blue)}
 .cols2{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-bottom:22px}
 .cols2.tight{gap:36px;margin-top:10px}.cols2.tight p{font-size:17px;margin:0}
 .cols2.center{align-items:center}
