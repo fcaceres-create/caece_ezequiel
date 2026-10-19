@@ -26,8 +26,7 @@ DOCS = ROOT / "docs"
 OUT = DOCS / "Informe_TP_Fraude.pdf"
 M = json.loads((ROOT / "models" / "metrics.json").read_text(encoding="utf-8"))
 
-# Completar con los datos del grupo antes de entregar
-INTEGRANTES = ["(completar integrantes del grupo)"]
+INTEGRANTES = ["Ezequiel Diaz Fernandez"]
 MATERIA = "Trabajo Práctico Final"
 INSTITUCION = "Universidad CAECE"
 REPO = "https://github.com/fcaceres-create/caece_ezequiel"
@@ -138,7 +137,7 @@ def cover():
     t.setStyle(TableStyle([("LINEABOVE", (0, 0), (-1, 0), 2, ORANGE), ("TOPPADDING", (0, 0), (-1, -1), 6), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
     s.append(t)
     s.append(Spacer(1, 4.5 * cm))
-    meta = [["Integrantes", "<br/>".join(INTEGRANTES)], ["Modelo final", M["chosen_name"]],
+    meta = [["Autor" if len(INTEGRANTES) == 1 else "Integrantes", "<br/>".join(INTEGRANTES)], ["Modelo final", M["chosen_name"]],
             ["Repositorio", f'<link href="{REPO}" color="#2a78d6">{REPO}</link>'],
             ["Fecha", date.today().strftime("%d/%m/%Y")]]
     t = Table([[P(a, "head"), P(b, "cell")] for a, b in meta], colWidths=[3.2 * cm, 13 * cm])

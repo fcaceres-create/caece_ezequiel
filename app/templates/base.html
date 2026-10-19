@@ -26,6 +26,7 @@
   </header>
   <main>{% block content %}{% endblock %}</main>
   <footer>
+    Autor: Ezequiel Diaz Fernandez ·
     Modelo: {{ m.chosen_name }} · umbral {{ ('%.3f' % m.threshold)|es }} · entrenado {{ m.generated }} ·
     Dataset: {{ '{:,}'.format(m.dataset.rows)|es }} transacciones simuladas (PaySim) ·
     <a href="/api/metrics">/api/metrics</a>

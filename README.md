@@ -1,6 +1,6 @@
 # Predicción de fraude en transacciones
 
-Trabajo Práctico Final · Universidad CAECE
+Trabajo Práctico Final · Universidad CAECE · **Autor:** Ezequiel Diaz Fernandez
 
 Modelo que estima si una transacción es fraudulenta, con su análisis completo (CRISP-DM) y una aplicación web Flask que lo consume mediante una API.
 

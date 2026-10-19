@@ -14,6 +14,7 @@ DOCS = ROOT / "docs"
 OUT = DOCS / "presentacion.html"
 M = json.loads((ROOT / "models" / "metrics.json").read_text(encoding="utf-8"))
 REPO = "https://github.com/fcaceres-create/caece_ezequiel"
+AUTOR = "Ezequiel Diaz Fernandez"
 
 
 def num(x, d=0):
@@ -51,6 +52,7 @@ def build():
           <div class="eyebrow">Universidad CAECE · Trabajo Práctico Final</div>
           <h1>Predicción de fraude<br>en transacciones</h1>
           <p class="lead">Del análisis de datos a un modelo desplegado como aplicación web</p>
+          <p class="author">{AUTOR}</p>
           <div class="kpis">
             <div><b>{num(d['rows'])}</b><span>transacciones</span></div>
             <div><b>{num(c['tp'])}/{num(c['tp'] + c['fn'])}</b><span>fraudes detectados en prueba</span></div>
@@ -219,7 +221,7 @@ def build():
         # 15 Cierre
         f"""<section class="cover end">
           <h1>¿Preguntas?</h1>
-          <p class="lead">Código, modelo, aplicación e informe</p>
+          <p class="lead">{AUTOR} · Código, modelo, aplicación e informe</p>
           <p class="repo">{REPO}</p>
         </section>""",
     ]
@@ -258,6 +260,7 @@ ul.big{padding-left:22px;margin:4px 0}ul.big li{font-size:21px;margin-bottom:12p
 .cover h1{font-size:76px}
 .kpis{display:flex;gap:56px;margin-top:46px;border-top:3px solid var(--orange);padding-top:20px}
 .kpis div{display:flex;flex-direction:column}.kpis b{font-size:42px;letter-spacing:-.02em}.kpis span{font-size:15px;color:var(--muted)}
+.author{font-size:20px;font-weight:600;color:var(--ink);margin:4px 0 0}
 .end{align-items:flex-start}.repo{font-family:Consolas,monospace;font-size:22px;color:var(--blue)}
 .cols2{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-bottom:22px}
 .cols2.tight{gap:36px;margin-top:10px}.cols2.tight p{font-size:17px;margin:0}
