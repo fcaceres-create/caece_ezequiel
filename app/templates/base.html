@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Detección de Fraude{% endblock %} · CAECE</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script>
+    try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="inner">
+      <a class="brand" href="/"><span class="logo">⚑</span> Detección de Fraude <small>· TP Final CAECE</small></a>
+      <nav>
+        <a href="/" class="{{ 'active' if page == 'resultados' }}">Resultados</a>
+        <a href="/proceso" class="{{ 'active' if page == 'proceso' }}">Proceso</a>
+        <a href="/simulador" class="{{ 'active' if page == 'simulador' }}">Simulador</a>
+      </nav>
+      <button class="theme-btn" id="themeBtn" title="Cambiar tema" aria-label="Cambiar tema">◐</button>
+    </div>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <footer>
+    Modelo: {{ m.chosen_name }} · umbral {{ ('%.3f' % m.threshold)|es }} · entrenado {{ m.generated }} ·
+    Dataset: {{ '{:,}'.format(m.dataset.rows)|es }} transacciones simuladas (PaySim) ·
+    <a href="/api/metrics">/api/metrics</a>
+  </footer>
+  <script src="{{ url_for('static', filename='charts.js') }}"></script>
+  <script>
+    document.getElementById("themeBtn").addEventListener("click", () => {
+      const root = document.documentElement;
+      const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+      root.dataset.theme = dark ? "light" : "dark";
+      try { localStorage.setItem("theme", root.dataset.theme); } catch (e) {}
+      if (window.redrawCharts) window.redrawCharts();
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

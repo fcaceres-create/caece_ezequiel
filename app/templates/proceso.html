@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Proceso{% endblock %}
+{% set d = m.dataset %}
+{% block content %}
+<section class="hero">
+  <div class="eyebrow">Metodología CRISP-DM</div>
+  <h1>Cómo se construyó el modelo</h1>
+  <p>Desde el problema de negocio hasta la aplicación web: qué se encontró en los datos, qué decisiones se tomaron y por qué.</p>
+</section>
+
+<div class="grid g-4">
+  <div class="card kpi"><div class="label">Transacciones</div><div class="value">{{ '{:,}'.format(d.rows)|es }}</div><div class="note">steps {{ d.steps[0] }} a {{ d.steps[1] }} (1 step = 1 hora)</div></div>
+  <div class="card kpi"><div class="label">Fraudes</div><div class="value">{{ '{:,}'.format(d.frauds)|es }}</div><div class="note">tasa global {{ ('%.4f' % (d.fraud_rate * 100))|es }} %</div></div>
+  <div class="card kpi"><div class="label">Faltantes / duplicados</div><div class="value">{{ d.missing }} / {{ d.duplicates }}</div><div class="note">pero hay muchos saldos en cero</div></div>
+  <div class="card kpi"><div class="label">Tipos con fraude</div><div class="value">2 de 5</div><div class="note">sólo TRANSFER y CASH_OUT</div></div>
+</div>
+
+<div class="section card">
+  <h2>1 · Comprensión del negocio</h2>
+  <div class="grid g-2" style="margin-top:10px">
+    <div class="callout"><p><b>Falso negativo</b> (fraude no detectado): pérdida directa del monto y exposición operativa. Es el error más caro.</p></div>
+    <div class="callout warn"><p><b>Falso positivo</b> (legítima bloqueada): costo de revisión y fricción con el cliente. Tolerable en baja proporción.</p></div>
+  </div>
+  <p style="margin-top:12px">Consecuencia: se prioriza el <b>recall</b> sin descuidar la precisión → el umbral se elige maximizando <b>F2</b>, y la métrica de comparación es <b>PR-AUC</b> (la accuracy sería engañosa: predecir "nunca fraude" daría 99,4 %).</p>
+</div>
+
+<div class="section">
+  <h2>2 · Comprensión de los datos</h2>
+  <div class="grid g-2" style="margin-top:12px">
+    <div class="card">
+      <h3>Volumen por tipo de transacción</h3>
+      <div class="sub">Cantidad de transacciones</div>
+      <div class="chart-box"><canvas id="cTypeVol"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Tasa de fraude por tipo</h3>
+      <div class="sub">El fraude se concentra en TRANSFER (3,4 %) y CASH_OUT (0,9 %)</div>
+      <div class="chart-box"><canvas id="cTypeRate"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Distribución del monto (escala log)</h3>
+      <div class="sub">Proporción de transacciones por rango de log(1 + monto). Los fraudes son mucho mayores: mediana $ {{ '{:,.0f}'.format(d.amount_quantiles.fraude['0.5'])|es }} vs $ {{ '{:,.0f}'.format(d.amount_quantiles.legitima['0.5'])|es }}.</div>
+      <div class="legend"><span><i style="background:var(--legit)"></i>Legítima</span><span><i style="background:var(--fraud)"></i>Fraude</span></div>
+      <div class="chart-box"><canvas id="cAmount"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Tasa de fraude por hora del día</h3>
+      <div class="sub">Calculada en la ventana con ambas clases (steps {{ d.sampling.legit_steps[0] }}–{{ d.sampling.legit_steps[1] }}). De madrugada el tráfico legítimo cae y el fraude no: la tasa supera el 25 % entre las 3 y las 4 h.</div>
+      <div class="chart-box"><canvas id="cHour"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Transacciones legítimas por día</h3>
+      <div class="sub">Sólo existen entre los días {{ ((d.sampling.legit_steps[0] - 1) // 24) + 1 }} y {{ ((d.sampling.legit_steps[1] - 1) // 24) + 1 }}.</div>
+      <div class="chart-box"><canvas id="cDayLegit"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Fraudes por día</h3>
+      <div class="sub">Presentes durante los 31 días, a un ritmo estable.</div>
+      <div class="chart-box"><canvas id="cDay"></canvas></div>
+    </div>
+  </div>
+  <div class="card section">
+    <h3>Hallazgo de calidad: el archivo es una muestra no uniforme</h3>
+    <div class="callout warn"><p>El índice original (<code>Unnamed: 0</code>) muestra que <code>Fraud.csv</code> contiene el <b>tramo final</b> del simulador más <b>todos los fraudes</b> previos.
+      Resultado: los steps 1–{{ d.sampling.legit_steps[0] - 1 }} tienen sólo fraudes ({{ '{:,}'.format(d.sampling.fraud_only_before)|es }}) y los steps {{ d.sampling.legit_steps[1] + 1 }}–{{ d.steps[1] }} también ({{ d.sampling.fraud_only_after }}).
+      La tasa global de {{ ('%.2f' % (d.fraud_rate * 100))|es }} % está inflada: en la ventana con ambas clases es <b>{{ ('%.2f' % (d.sampling.window_rate * 100))|es }} %</b>.</p></div>
+    <p style="margin-top:12px">Decisiones: (1) no se usan <code>step</code> ni <code>day</code> como variables, para que el modelo no aprenda "temprano = fraude";
+      (2) se verificó que esos fraudes son representativos (vacían la cuenta en {{ ('%.1f' % (d.sampling.drain_before * 100))|es }} % vs {{ ('%.1f' % (d.sampling.drain_window * 100))|es }} %, misma distribución horaria) y se conservan para entrenar;
+      (3) la evaluación se reporta también sólo dentro de la ventana con ambas clases;
+      (4) un modelo entrenado sin esos fraudes logra PR-AUC {{ ('%.4f' % m.results[m.chosen ~ '__solo_ventana'].test.pr_auc)|es }}: el resultado no depende del artefacto.</p>
+  </div>
+  <div class="card section">
+    <h3>El hallazgo clave: el fraude vacía la cuenta</h3>
+    <p>El <b>{{ ('%.1f' % (d.drain.fraude_que_vacia * 100))|es }} %</b> de los fraudes transfiere o extrae <i>exactamente</i> todo el saldo de la cuenta de origen. Entre las {{ '{:,}'.format(d.drain.n_vacia)|es }} operaciones que lo hacen, el {{ ('%.2f' % (d.drain.p_fraude_si_vacia * 100))|es }} % son fraude.
+       Es un comportamiento del simulador PaySim (el estafador toma control de la cuenta y la vacía), coherente con el negocio pero mucho más limpio que en la realidad.
+       Se convirtió en las variables <code>drainsOrigin</code> y <code>amountMinusOrigBalance</code>, y se usó como <b>línea base</b> que todo modelo debe superar.</p>
+  </div>
+</div>
+
+<div class="section card">
+  <h2>3 · Preparación de los datos</h2>
+  <div class="grid g-2" style="margin-top:8px">
+    <div>
+      <h3>Se excluye</h3>
+      <ul>
+        <li><code>isFlaggedFraud</code>: lo indica la consigna.</li>
+        <li><code>Unnamed: 0</code>: índice exportado, sin significado.</li>
+        <li><code>nameOrig</code> / <code>nameDest</code>: ~100 % de valores únicos; codificarlos memorizaría cuentas. Sólo se conserva el prefijo del destino (C = cliente, M = comercio).</li>
+        <li><code>step</code> y <code>day</code> como variables: en una partición temporal el modelo vería días futuros que nunca existieron en entrenamiento. Se usa la hora del día.</li>
+        <li>Saldos posteriores (<code>newbalance*</code>) y errores contables: se evaluaron (escenario B) pero no se despliegan, porque no se conocen antes de autorizar.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Se crea ({{ m.features|length }} variables en el modelo)</h3>
+      <ul>
+        <li><b>Tiempo</b>: <code>hourOfDay</code>, <code>isNight</code>.</li>
+        <li><b>Monto</b>: <code>logAmount</code> para reducir la asimetría (los extremos no se eliminan: son señal).</li>
+        <li><b>Saldos</b>: <code>origZeroBefore</code>, <code>destZeroBefore</code>, ratios monto/saldo.</li>
+        <li><b>Vaciado</b>: <code>drainsOrigin</code>, <code>amountMinusOrigBalance</code>.</li>
+        <li><b>Categóricas</b>: <code>type</code>, <code>destPrefix</code> → One-Hot Encoding.</li>
+        <li><b>Escalado</b>: <code>RobustScaler</code> (mediana e IQR), resistente a colas extremas.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section card">
+  <h2>4 · Partición temporal</h2>
+  <div class="sub">Se entrena con el pasado, se ajusta el umbral con el período siguiente y se evalúa con el futuro. No se balancean clases con remuestreo: se usa <code>class_weight</code>, que no altera los datos de evaluación. Las tasas por conjunto reflejan en parte el muestreo del archivo (ver hallazgo de calidad).</div>
+  <div class="timeline" id="timeline"></div>
+  <div class="table-wrap" style="margin-top:14px">
+  <table>
+    <thead><tr><th>Conjunto</th><th class="num">Steps</th><th class="num">Filas</th><th class="num">Fraudes</th><th class="num">Tasa</th><th>Uso</th></tr></thead>
+    <tbody>
+    {% set usos = {'train': 'Ajuste de los modelos', 'validation': 'Selección de modelo y umbral', 'test': 'Evaluación final (una sola vez)'} %}
+    {% for s in m.splits %}
+      <tr><td>{{ s.conjunto }}</td><td class="num">{{ s.step_desde }}–{{ s.step_hasta }}</td><td class="num">{{ '{:,}'.format(s.filas)|es }}</td><td class="num">{{ '{:,}'.format(s.fraudes)|es }}</td><td class="num">{{ ('%.2f' % (s.tasa * 100))|es }} %</td><td>{{ usos[s.conjunto] }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="section card">
+  <h2>5 · Modelado: algoritmos y justificación</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Algoritmo</th><th>Por qué se incluye</th><th>Configuración</th></tr></thead>
+    <tbody>
+      <tr><td>Regla base</td><td>Referencia sin aprendizaje: si el modelo no la supera, no se justifica.</td><td><code>drainsOrigin = 1</code> → fraude</td></tr>
+      <tr><td>Regresión Logística</td><td>Modelo lineal interpretable; establece cuánto se logra con relaciones simples.</td><td><code>class_weight="balanced"</code></td></tr>
+      <tr><td>Árbol de Decisión</td><td>Captura reglas no lineales y es fácil de explicar al negocio.</td><td>profundidad 8, hoja mín. 20</td></tr>
+      <tr><td>Random Forest</td><td>Ensamble por bagging: reduce la varianza del árbol, robusto a outliers.</td><td>150 árboles, profundidad 14</td></tr>
+      <tr><td>Gradient Boosting (HistGB)</td><td>Ensamble por boosting: corrige errores secuencialmente; muy eficiente en tablas grandes.</td><td>300 iter. máx., early stopping</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="section card">
+  <h2>6 · Evaluación y selección</h2>
+  <div class="steps" style="margin-top:10px">
+    <div class="step"><div class="n"></div><div><b>Métrica principal: PR-AUC en validación.</b><p>Resume precisión y recall en todos los umbrales y no se infla con el desbalance como la ROC-AUC.</p></div></div>
+    <div class="step"><div class="n"></div><div><b>Desempate: robustez.</b><p>Random Forest y HistGB empataron (PR-AUC 1,000). Se reentrenaron sin las variables de vaciado: HistGB mantuvo {{ ('%.4f' % m.results['hgb__sin_vaciado'].valid.pr_auc)|es }} y Random Forest {{ ('%.4f' % m.results['forest__sin_vaciado'].valid.pr_auc)|es }}. Ante patrones nuevos, depende menos de una única regla.</p></div></div>
+    <div class="step"><div class="n"></div><div><b>Umbral: máximo F2 en validación</b> ({{ ('%.3f' % m.threshold)|es }}).<p>Se fija antes de mirar el conjunto de prueba, que se usa una sola vez.</p></div></div>
+    <div class="step"><div class="n"></div><div><b>Control de fuga.</b><p>El escenario B (con saldos posteriores) no mejora al A ({{ m.results[m.chosen ~ '__B'].test.confusion.fn }} vs {{ m.results[m.chosen].test.confusion.fn }} fraudes perdidos): el desempeño no depende de información posterior a la transacción.</p></div></div>
+  </div>
+</div>
+
+<div class="section card">
+  <h2>7 · Despliegue</h2>
+  <p>El pipeline completo (preprocesamiento + modelo + umbral) se serializa con <code>joblib</code> y lo consume una aplicación <b>Flask</b> que expone una API REST y esta interfaz.</p>
+  <pre>POST /api/predict
+{"type": "TRANSFER", "amount": 181000, "oldbalanceOrg": 181000,
+ "oldbalanceDest": 0, "hourOfDay": 3, "destPrefix": "C"}
+
+→ {"probabilidad": 0.99..., "umbral": {{ '%.3f' % m.threshold }}, "es_fraude": true,
+   "decision": "BLOQUEAR / REVISAR", "senales": [...]}</pre>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const D = {{ m.dataset|tojson }}, S = {{ m.splits|tojson }};
+const types = [...D.by_type].sort((a, b) => b.transacciones - a.transacciones);
+const pctTick = v => (v * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 }) + " %";
+const tip = (fn) => ({ ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { label: fn } } });
+const bar = (color) => ({ backgroundColor: color, borderRadius: 4, borderSkipped: "start", maxBarThickness: 40 });
+
+chart("cTypeVol", () => ({
+  type: "bar",
+  data: { labels: types.map(t => t.type), datasets: [{ data: types.map(t => t.transacciones), ...bar(css("--legit")) }] },
+  options: baseOptions({ plugins: tip(c => " " + fmtInt(c.parsed.y) + " transacciones") ,
+    scales: { ...baseOptions().scales, y: { ...baseOptions().scales.y, ticks: { color: css("--muted"), callback: v => fmtInt(v / 1000) + " mil" } } } }),
+}));
+chart("cTypeRate", () => ({
+  type: "bar",
+  data: { labels: types.map(t => t.type), datasets: [{ data: types.map(t => t.tasa), ...bar(css("--fraud")) }] },
+  options: baseOptions({ plugins: tip(c => ` ${pctTick(c.parsed.y)} (${fmtInt(types[c.dataIndex].fraudes)} fraudes)`),
+    scales: { ...baseOptions().scales, y: { ...baseOptions().scales.y, ticks: { color: css("--muted"), callback: pctTick } } } }),
+}));
+chart("cAmount", () => {
+  const b = D.amount_hist.bins, labels = b.slice(0, -1).map((x, i) => ((x + b[i + 1]) / 2).toFixed(1));
+  return {
+    type: "bar",
+    data: { labels, datasets: [
+      { label: "Legítima", data: D.amount_hist.legitima, backgroundColor: css("--legit"), barPercentage: 1, categoryPercentage: 0.9 },
+      { label: "Fraude", data: D.amount_hist.fraude, backgroundColor: css("--fraud"), barPercentage: 1, categoryPercentage: 0.9 },
+    ] },
+    options: baseOptions({
+      plugins: { ...tip(c => ` ${c.dataset.label}: ${pctTick(c.parsed.y)}`), tooltip: { ...baseOptions().plugins.tooltip, callbacks: {
+        title: i => "monto ≈ $ " + fmtInt(Math.expm1(+i[0].label)), label: c => ` ${c.dataset.label}: ${pctTick(c.parsed.y)}` } } },
+      scales: { x: { ...baseOptions().scales.x, title: { display: true, text: "log(1 + monto)", color: css("--muted") }, ticks: { color: css("--muted"), maxTicksLimit: 9 } },
+                y: { ...baseOptions().scales.y, ticks: { color: css("--muted"), callback: pctTick } } },
+    }),
+  };
+});
+chart("cHour", () => ({
+  type: "bar",
+  data: { labels: D.by_hour.map(h => h.hourOfDay + " h"), datasets: [{ data: D.by_hour.map(h => h.tasa), ...bar(css("--fraud")), maxBarThickness: 22 }] },
+  options: baseOptions({ plugins: tip(c => ` Tasa ${pctTick(c.parsed.y)} · ${fmtInt(D.by_hour[c.dataIndex].fraudes)} fraudes de ${fmtInt(D.by_hour[c.dataIndex].transacciones)}`),
+    scales: { ...baseOptions().scales, y: { ...baseOptions().scales.y, ticks: { color: css("--muted"), callback: pctTick } } } }),
+}));
+const dayX = () => ({ ...baseOptions().scales.x, ticks: { color: css("--muted"), maxTicksLimit: 11 } });
+chart("cDayLegit", () => ({
+  type: "bar",
+  data: { labels: D.by_day.map(x => "Día " + x.day), datasets: [{ data: D.by_day.map(x => x.transacciones - x.fraudes), ...bar(css("--legit")), maxBarThickness: 14 }] },
+  options: baseOptions({ plugins: tip(c => ` ${fmtInt(c.parsed.y)} legítimas`),
+    scales: { x: dayX(), y: { ...baseOptions().scales.y, ticks: { color: css("--muted"), callback: v => fmtInt(v / 1000) + " mil" } } } }),
+}));
+chart("cDay", () => ({
+  type: "bar",
+  data: { labels: D.by_day.map(x => "Día " + x.day), datasets: [{ data: D.by_day.map(x => x.fraudes), ...bar(css("--fraud")), maxBarThickness: 14 }] },
+  options: baseOptions({ plugins: tip(c => ` ${fmtInt(c.parsed.y)} fraudes`), scales: { x: dayX(), y: { ...baseOptions().scales.y, min: 0 } } }),
+}));
+
+// Línea de tiempo de la partición
+const total = S.reduce((a, s) => a + (s.step_hasta - s.step_desde + 1), 0);
+const colors = { train: "var(--legit)", validation: "#1baf7a", test: "var(--fraud)" };
+const names = { train: "Entrenamiento", validation: "Validación", test: "Prueba" };
+document.getElementById("timeline").innerHTML = S.map(s =>
+  `<div style="flex:${s.step_hasta - s.step_desde + 1};background:${colors[s.conjunto]}" title="steps ${s.step_desde}–${s.step_hasta}">${names[s.conjunto]} · días ${Math.floor((s.step_desde - 1) / 24) + 1}–${Math.floor((s.step_hasta - 1) / 24) + 1}</div>`).join("");
+</script>
+{% endblock %}

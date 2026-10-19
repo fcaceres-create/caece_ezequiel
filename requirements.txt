@@ -1,0 +1,10 @@
+# scikit-learn fijado: el modelo serializado (models/fraud_model.joblib) depende de la versión
+scikit-learn==1.9.1
+pandas>=3.0
+numpy>=2.0
+joblib>=1.4
+flask>=3.0
+# análisis, informe y presentación
+matplotlib>=3.9
+seaborn>=0.13
+reportlab>=4.0

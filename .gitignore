@@ -1,0 +1,9 @@
+# Dataset (120 MB): descargar desde el enlace de la consigna y guardar como data/Fraud.csv
+data/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+.vscode/
+.DS_Store

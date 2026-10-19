@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Resultados{% endblock %}
+{% set r = m.results[m.chosen] %}
+{% set t = r.test %}
+{% block content %}
+<section class="hero">
+  <div class="eyebrow">Resultados sobre el período de prueba · steps {{ m.splits[2].step_desde }}–{{ m.splits[2].step_hasta }} (últimos 8 días)</div>
+  <h1>El modelo detecta {{ t.confusion.tp }} de {{ t.confusion.tp + t.confusion.fn }} fraudes sin bloquear operaciones legítimas</h1>
+  <p>Se compararon cuatro algoritmos contra una regla simple, con una partición <b>temporal</b>: se entrena con el pasado y se evalúa con el futuro, como ocurriría en producción.
+     El elegido es <b>{{ m.chosen_name }}</b>, que sólo usa información disponible <i>antes</i> de autorizar la transacción.</p>
+</section>
+
+<div class="grid g-4">
+  <div class="card kpi">
+    <div class="label">Recall (fraudes detectados)</div>
+    <div class="value" id="kRecall"></div>
+    <div class="note">{{ t.confusion.fn }} fraudes no detectados</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Precisión de las alertas</div>
+    <div class="value" id="kPrec"></div>
+    <div class="note">{{ t.confusion.fp }} legítimas bloqueadas de {{ '{:,}'.format(t.confusion.tn + t.confusion.fp)|es }}</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Monto de fraude evitado</div>
+    <div class="value" id="kMoney"></div>
+    <div class="note" id="kMoneyNote"></div>
+  </div>
+  <div class="card kpi">
+    <div class="label">PR-AUC (prueba)</div>
+    <div class="value" id="kPR"></div>
+    <div class="note">Métrica principal: robusta al desbalance</div>
+  </div>
+</div>
+
+<div class="section card">
+  <h2>Comparación de modelos</h2>
+  <div class="sub">Umbral elegido en validación maximizando F2 (el recall pesa el doble que la precisión). Métricas de prueba con ese umbral.</div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Modelo</th><th class="num">PR-AUC valid.</th><th class="num">PR-AUC prueba</th><th class="num">Recall</th><th class="num">Precisión</th><th class="num">F2</th><th class="num">Fraudes perdidos</th><th class="num">Falsos positivos</th><th class="num">PR-AUC sin vaciado</th><th class="num">Entrenamiento</th></tr></thead>
+    <tbody>
+    {% for k in ['rule', 'logreg', 'tree', 'forest', 'hgb'] %}
+      {% set x = m.results[k] %}
+      {% set abl = m.results.get(k ~ '__sin_vaciado') %}
+      <tr class="{{ 'chosen' if k == m.chosen }}">
+        <td>{{ x.name }} {% if k == m.chosen %}<span class="pill ok">elegido</span>{% elif k == 'rule' %}<span class="pill info">línea base</span>{% endif %}</td>
+        <td class="num">{{ ('%.4f' % x.valid.pr_auc)|es }}</td>
+        <td class="num">{{ ('%.4f' % x.test.pr_auc)|es }}</td>
+        <td class="num">{{ ('%.2f' % (x.test.recall * 100))|es }} %</td>
+        <td class="num">{{ ('%.2f' % (x.test.precision * 100))|es }} %</td>
+        <td class="num">{{ ('%.4f' % x.test.f2)|es }}</td>
+        <td class="num">{{ x.test.confusion.fn }}</td>
+        <td class="num">{{ x.test.confusion.fp }}</td>
+        <td class="num">{{ (('%.4f' % abl.test.pr_auc)|es) if abl else '—' }}</td>
+        <td class="num">{{ (('%.1f s' % x.fit_seconds)|es) if k != 'rule' else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="section grid g-2">
+  <div class="card">
+    <h2>Robustez: ¿qué pasa sin la señal de "vaciado"?</h2>
+    <div class="sub">PR-AUC en prueba con y sin las variables <code>drainsOrigin</code> y <code>amountMinusOrigBalance</code>. El criterio de desempate favoreció al modelo que menos depende de ellas.</div>
+    <div class="legend"><span><i style="background:var(--legit)"></i>Con todas las variables</span><span><i style="background:var(--fraud)"></i>Sin variables de vaciado</span></div>
+    <div class="chart-box"><canvas id="cRobust"></canvas></div>
+  </div>
+  <div class="card">
+    <h2>Matriz de confusión · {{ m.chosen_name }}</h2>
+    <div class="sub">{{ '{:,}'.format(m.splits[2].filas)|es }} transacciones de prueba, umbral {{ ('%.3f' % m.threshold)|es }}</div>
+    <div class="cm">
+      <div></div><div class="h">Predicho: legítima</div><div class="h">Predicho: fraude</div>
+      <div class="h">Real:<br>legítima</div>
+      <div class="c tn"><b>{{ '{:,}'.format(t.confusion.tn)|es }}</b><span>verdaderos negativos</span></div>
+      <div class="c fp"><b>{{ t.confusion.fp }}</b><span>falsos positivos</span></div>
+      <div class="h">Real:<br>fraude</div>
+      <div class="c fn"><b>{{ t.confusion.fn }}</b><span>fraudes no detectados</span></div>
+      <div class="c tp"><b>{{ '{:,}'.format(t.confusion.tp)|es }}</b><span>fraudes detectados</span></div>
+    </div>
+    <p style="margin-top:14px;font-size:.88rem">Los {{ m.missed_profile.n }} fraudes no detectados no vacían la cuenta de origen (mediana de monto $ {{ '{:,.0f}'.format(m.missed_profile.monto_mediano)|es }}): son justamente los que escapan al patrón dominante.</p>
+  </div>
+</div>
+
+<div class="section grid g-2">
+  <div class="card">
+    <h2>Elección del umbral (validación)</h2>
+    <div class="sub">Precisión, recall y F2 según el umbral de probabilidad. La línea vertical marca el umbral elegido.</div>
+    <div class="legend"><span><i style="background:var(--legit)"></i>Precisión</span><span><i style="background:var(--fraud)"></i>Recall</span><span><i style="background:#1baf7a"></i>F2</span></div>
+    <div class="chart-box"><canvas id="cThr"></canvas></div>
+  </div>
+  <div class="card">
+    <h2>Importancia de variables</h2>
+    <div class="sub">Caída de PR-AUC al permutar cada variable (todos los fraudes de prueba + 40.000 legítimas). Escala logarítmica.</div>
+    <div class="chart-box"><canvas id="cImp"></canvas></div>
+  </div>
+</div>
+
+<div class="section grid g-2">
+  <div class="card">
+    <h2>Detección por tipo de transacción</h2>
+    <div class="sub">Período de prueba</div>
+    <table>
+      <thead><tr><th>Tipo</th><th class="num">Transacciones</th><th class="num">Fraudes</th><th class="num">Alertas</th><th class="num">Detectados</th></tr></thead>
+      <tbody>
+      {% for p in m.per_type %}
+        <tr><td>{{ p.type }}</td><td class="num">{{ '{:,}'.format(p.transacciones)|es }}</td><td class="num">{{ p.fraudes }}</td><td class="num">{{ p.alertas }}</td><td class="num">{{ p.detectados }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>¿Son razonables estos resultados?</h2>
+    <div class="callout warn">
+      <p>Un desempeño casi perfecto <b>no es esperable en datos bancarios reales</b>. Aquí se explica porque el dataset es simulado (PaySim):
+      el <b>{{ ('%.1f' % (m.dataset.drain.fraude_que_vacia * 100))|es }} %</b> de los fraudes vacía exactamente la cuenta de origen y prácticamente ninguna operación legítima lo hace
+      (probabilidad de fraude dado el vaciado: {{ ('%.2f' % (m.dataset.drain.p_fraude_si_vacia * 100))|es }} %).</p>
+    </div>
+    <p style="margin-top:12px">Por eso la regla simple ya logra {{ ('%.1f' % (m.results.rule.test.recall * 100))|es }} % de recall. El valor del modelo está en el resto: recupera los fraudes que no siguen el patrón, con cero falsos positivos y sin variables posteriores a la transacción.
+       Además, el archivo contiene períodos con sólo fraudes; evaluando únicamente donde conviven ambas clases (prevalencia real {{ ('%.2f' % (m.dataset.sampling.window_rate * 100))|es }} %), el modelo detecta {{ m.results[m.chosen].test_window.confusion.tp }} de {{ m.results[m.chosen].test_window.confusion.tp + m.results[m.chosen].test_window.confusion.fn }} con {{ m.results[m.chosen].test_window.confusion.fp }} falsos positivos.
+       En producción habría que monitorear la deriva y reentrenar periódicamente.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const M = {{ m|tojson }};
+const R = M.results[M.chosen], T = R.test;
+document.getElementById("kRecall").textContent = fmtPct(T.recall);
+document.getElementById("kPrec").textContent = fmtPct(T.precision);
+document.getElementById("kPR").textContent = T.pr_auc.toLocaleString("es-AR", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+document.getElementById("kMoney").textContent = fmtMoney(T.fraud_amount_detected);
+document.getElementById("kMoneyNote").textContent = fmtPct(T.fraud_amount_detected / T.fraud_amount_total) + " del monto defraudado en prueba";
+
+const keys = ["logreg", "tree", "forest", "hgb"];
+chart("cRobust", () => ({
+  type: "bar",
+  data: {
+    labels: keys.map(k => M.results[k].name.replace(" (HistGB)", "")),
+    datasets: [
+      { label: "Con todas las variables", data: keys.map(k => M.results[k].test.pr_auc), backgroundColor: css("--legit"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 34 },
+      { label: "Sin variables de vaciado", data: keys.map(k => M.results[k + "__sin_vaciado"].test.pr_auc), backgroundColor: css("--fraud"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 34 },
+    ],
+  },
+  options: baseOptions({
+    plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(4)}` } } },
+    scales: { ...baseOptions().scales, y: { ...baseOptions().scales.y, min: 0, max: 1, title: { display: true, text: "PR-AUC", color: css("--muted") } } },
+  }),
+}));
+
+chart("cThr", () => {
+  const tc = M.threshold_curve;
+  return {
+    type: "line",
+    data: {
+      labels: tc.map(d => d.t),
+      datasets: [
+        { label: "Precisión", data: tc.map(d => d.precision), borderColor: css("--legit"), borderWidth: 2, pointRadius: 0 },
+        { label: "Recall", data: tc.map(d => d.recall), borderColor: css("--fraud"), borderWidth: 2, pointRadius: 0 },
+        { label: "F2", data: tc.map(d => d.f2), borderColor: "#1baf7a", borderWidth: 2, pointRadius: 0, borderDash: [5, 4] },
+      ],
+    },
+    options: baseOptions({
+      scales: {
+        x: { type: "linear", min: 0, max: 1, grid: { display: false }, ticks: { color: css("--muted") }, title: { display: true, text: "Umbral", color: css("--muted") } },
+        y: { min: 0.85, max: 1.005, grid: { color: css("--grid") }, ticks: { color: css("--muted") } },
+      },
+      plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { title: i => "Umbral " + i[0].label, label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(4)}` } } },
+    }),
+    plugins: [{
+      id: "thrLine",
+      afterDraw(c) {
+        const x = c.scales.x.getPixelForValue(M.threshold), { top, bottom } = c.chartArea, ctx = c.ctx;
+        ctx.save(); ctx.strokeStyle = css("--text"); ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+        ctx.fillStyle = css("--text-2"); ctx.font = "11px Inter"; ctx.textAlign = "right"; ctx.fillText("umbral " + M.threshold.toFixed(3), x - 6, top + 12);
+        ctx.restore();
+      },
+    }],
+  };
+});
+
+chart("cImp", () => {
+  const imp = M.importance.slice(0, 8);
+  return {
+    type: "bar",
+    data: { labels: imp.map(d => d.feature), datasets: [{ data: imp.map(d => Math.max(d.importance, 1e-6)), backgroundColor: css("--legit"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 22 }] },
+    options: baseOptions({
+      indexAxis: "y",
+      interaction: { mode: "nearest", intersect: true, axis: "y" },
+      plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { label: c => " Caída de PR-AUC: " + imp[c.dataIndex].importance.toExponential(2) } } },
+      scales: {
+        x: { type: "logarithmic", grid: { color: css("--grid") }, ticks: { color: css("--muted"), callback: v => ([1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1].includes(v) ? v.toExponential(0) : "") } },
+        y: { grid: { display: false }, afterFit: (a) => { a.width = 170; }, ticks: { color: css("--text-2"), font: { family: "JetBrains Mono", size: 11 } } },
+      },
+    }),
+  };
+});
+</script>
+{% endblock %}

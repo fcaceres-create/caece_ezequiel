@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Simulador{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="eyebrow">Consumo del modelo vía API</div>
+  <h1>Simulador de transacciones</h1>
+  <p>Cargá una operación (o elegí un ejemplo real del período de prueba) y el modelo estima la probabilidad de fraude <b>antes de autorizarla</b>. Cada consulta llama a <code>POST /api/predict</code>.</p>
+</section>
+
+<div class="grid g-2">
+  <div class="card">
+    <h2>Datos de la transacción</h2>
+    <div class="sub">Ejemplos reales tomados del conjunto de prueba:</div>
+    <div class="examples" id="examples"></div>
+    <form id="txForm" autocomplete="off">
+      <div class="row">
+        <div>
+          <label for="type">Tipo</label>
+          <select id="type" name="type">{% for t in types %}<option value="{{ t }}" {{ 'selected' if t == 'TRANSFER' }}>{{ t }}</option>{% endfor %}</select>
+        </div>
+        <div>
+          <label for="hourOfDay">Hora del día (0–23)</label>
+          <input id="hourOfDay" name="hourOfDay" type="number" min="0" max="23" value="14" required>
+        </div>
+      </div>
+      <label for="amount">Monto</label>
+      <input id="amount" name="amount" type="number" min="0" step="0.01" value="250000" required>
+      <div class="row">
+        <div>
+          <label for="oldbalanceOrg">Saldo previo del origen</label>
+          <input id="oldbalanceOrg" name="oldbalanceOrg" type="number" min="0" step="0.01" value="900000" required>
+        </div>
+        <div>
+          <label for="oldbalanceDest">Saldo previo del destino</label>
+          <input id="oldbalanceDest" name="oldbalanceDest" type="number" min="0" step="0.01" value="120000" required>
+        </div>
+      </div>
+      <label for="destPrefix">Destinatario</label>
+      <select id="destPrefix" name="destPrefix"><option value="C">C · Cliente</option><option value="M">M · Comercio</option></select>
+      <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+        <button class="btn" type="submit" id="go">Evaluar transacción</button>
+        <button class="btn ghost" type="button" id="drain">Vaciar la cuenta (monto = saldo)</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" id="resultCard">
+    <h2>Resultado</h2>
+    <div id="result"><div class="result-empty">Completá los datos y presioná <b>Evaluar</b>.</div></div>
+  </div>
+</div>
+
+<div class="section card">
+  <h2>Uso de la API desde otra aplicación</h2>
+  <div class="sub">Misma llamada que hace este formulario</div>
+  <pre id="curl"></pre>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const EX = {{ m.examples|tojson }};
+const THR = {{ m.threshold|tojson }};
+const form = document.getElementById("txForm");
+const fields = ["type", "hourOfDay", "amount", "oldbalanceOrg", "oldbalanceDest", "destPrefix"];
+
+document.getElementById("examples").innerHTML = EX.map((e, i) =>
+  `<button type="button" data-i="${i}">${e.isFraud ? "⚠ Fraude" : "✓ Legítima"} · ${e.type} · ${fmtMoney(e.amount)}</button>`).join("");
+document.getElementById("examples").addEventListener("click", ev => {
+  const b = ev.target.closest("button"); if (!b) return;
+  const e = EX[+b.dataset.i];
+  fields.forEach(f => form[f].value = e[f]);
+  evaluate(e.isFraud);
+});
+document.getElementById("drain").addEventListener("click", () => { form.amount.value = form.oldbalanceOrg.value; evaluate(); });
+form.type.addEventListener("change", () => { form.destPrefix.value = form.type.value === "PAYMENT" ? "M" : "C"; });
+form.addEventListener("submit", ev => { ev.preventDefault(); evaluate(); });
+
+function payload() {
+  const p = {};
+  fields.forEach(f => p[f] = ["type", "destPrefix"].includes(f) ? form[f].value : Number(form[f].value));
+  return p;
+}
+
+function updateCurl(p) {
+  document.getElementById("curl").textContent =
+    `curl -X POST ${location.origin}/api/predict \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(p)}'`;
+}
+
+async function evaluate(truth) {
+  const p = payload(), btn = document.getElementById("go"), out = document.getElementById("result");
+  updateCurl(p);
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/predict", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
+    const r = await res.json();
+    if (!res.ok) {
+      out.innerHTML = `<div class="callout warn"><p><b>Datos inválidos</b></p><p>${(r.errors || [r.error]).join("<br>")}</p></div>`;
+      return;
+    }
+    const pct = r.probabilidad * 100, bad = r.es_fraude;
+    const lvl = { alto: "bad", medio: "warn", bajo: "info" };
+    const truthTxt = truth === undefined ? "" :
+      `<p style="margin-top:12px;font-size:.85rem">Etiqueta real de este ejemplo: <b>${truth ? "fraude" : "legítima"}</b> ${(truth === 1) === bad ? '<span class="pill ok">acierto</span>' : '<span class="pill bad">error</span>'}</p>`;
+    out.innerHTML = `
+      <div class="eyebrow">Decisión sugerida</div>
+      <div class="verdict ${bad ? "bad" : "ok"}">${bad ? "⚠ " : "✓ "}${r.decision}</div>
+      <div class="gauge" role="img" aria-label="Probabilidad ${pct.toFixed(2)} %">
+        <div class="fill" style="width:${Math.max(pct, 1)}%;background:${bad ? "var(--bad)" : "var(--ok)"}"></div>
+        <div class="thr" style="left:${r.umbral * 100}%" title="Umbral ${r.umbral.toFixed(3)}"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:.82rem;color:var(--muted)"><span>Probabilidad de fraude: <b style="color:var(--text)">${pct.toLocaleString("es-AR", { maximumFractionDigits: 2 })} %</b></span><span>umbral ${(r.umbral * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })} %</span></div>
+      <h3 style="margin-top:18px">Señales observadas</h3>
+      <ul class="signals">${r.senales.map(s => `<li><span class="pill ${lvl[s.nivel]}">${s.nivel}</span><span>${s.texto}</span></li>`).join("")}</ul>
+      <p style="margin-top:12px;font-size:.8rem;color:var(--muted)">Las señales contextualizan el resultado; la decisión la toma el modelo (${r.modelo}).</p>
+      ${truthTxt}`;
+  } catch (e) {
+    out.innerHTML = `<div class="callout warn"><p>No se pudo contactar la API: ${e}</p></div>`;
+  } finally { btn.disabled = false; }
+}
+const pre = new URLSearchParams(location.search).get("ejemplo");
+if (pre !== null && EX[+pre]) document.querySelector(`#examples button[data-i="${+pre}"]`).click(); else evaluate();
+</script>
+{% endblock %}
